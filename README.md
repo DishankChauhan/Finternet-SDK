@@ -242,7 +242,7 @@ let token_accounts = client
 
 ### 1. Setup Backend
 ```bash
-git clone <repository-url>
+git clone https://github.com/DishankChauhan/Finternet-SDK
 cd finternet-sdk
 cargo build
 cargo run --bin finternet-api
