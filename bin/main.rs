@@ -122,6 +122,27 @@ enum Commands {
         #[arg(short, long)]
         organization: Option<String>,
     },
+    
+    /// Setup devnet USDC for testing
+    SetupUsdc {
+        #[arg(short, long)]
+        address: Option<String>,
+    },
+    
+    /// Discover all tokens (enhanced asset discovery)
+    DiscoverTokens {
+        #[arg(short, long)]
+        address: Option<String>,
+    },
+    
+    /// Run enhanced demo
+    Demo,
+    
+    /// Test token creation and discovery with blockchain confirmation wait
+    TestTokenDiscovery {
+        #[arg(short, long, default_value = "20")]
+        wait_seconds: u64,
+    },
 }
 
 #[tokio::main]
@@ -366,6 +387,137 @@ async fn main() -> Result<()> {
             
             println!("✅ Identity registered successfully!");
             println!("📝 Transaction: {}", signature);
+        }
+        
+        Commands::SetupUsdc { address } => {
+            let target_address = if let Some(addr) = address {
+                Pubkey::from_str(&addr)?
+            } else {
+                wallet.pubkey()
+            };
+            
+            println!("💵 Setting up devnet USDC for: {}", target_address);
+            
+            match client.request_devnet_usdc(&target_address).await {
+                Ok(status) => {
+                    println!("📋 USDC Status: {}", status);
+                    
+                    let balance = client.get_usdc_balance(&target_address).await?;
+                    println!("💰 Current USDC Balance: ${:.2}", balance);
+                    
+                    if balance < 1.0 {
+                        println!("\n💡 To get devnet USDC:");
+                        println!("   1. spl-token create-account 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+                        println!("   2. Visit: https://spl-token-faucet.com/?token-name=USDC");
+                        println!("   3. Or ask in Solana Discord #devnet-faucet");
+                    }
+                }
+                Err(e) => {
+                    println!("❌ USDC setup failed: {}", e);
+                }
+            }
+        }
+        
+        Commands::DiscoverTokens { address } => {
+            let target_address = if let Some(addr) = address {
+                Pubkey::from_str(&addr)?
+            } else {
+                wallet.pubkey()
+            };
+            
+            println!("🔍 Discovering all tokens for: {}", target_address);
+            
+            match client.discover_all_tokens(&target_address).await {
+                Ok(tokens) => {
+                    if tokens.is_empty() {
+                        println!("📭 No token holdings found");
+                    } else {
+                        println!("📦 Found {} token holdings:", tokens.len());
+                        for (mint, balance, name) in tokens {
+                            let display_name = name.unwrap_or_else(|| "Unknown Token".to_string());
+                            println!("   • {} (Balance: {}) - {}", display_name, balance, mint);
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("❌ Token discovery failed: {}", e);
+                }
+            }
+        }
+        
+        Commands::Demo => {
+            println!("🚀 Running enhanced Finternet SDK demo...");
+            println!("💡 This will demonstrate all core features with realistic scenarios");
+            println!("📋 Running: cargo run --example enhanced_demo");
+            
+            // Note: In a real CLI, you might want to run the demo directly here
+            // For now, we'll provide instructions
+            println!("\n🔧 To run the full demo:");
+            println!("   cargo run --example enhanced_demo");
+        }
+        
+        Commands::TestTokenDiscovery { wait_seconds } => {
+            println!("🧪 Testing Token Creation and Discovery");
+            println!("⏰ Will wait {} seconds for blockchain confirmation", wait_seconds);
+            
+            // Create a test token
+            println!("\n📝 Creating test token...");
+            let test_name = format!("Test Token {}", chrono::Utc::now().format("%H:%M:%S"));
+            
+            match client.tokenize_asset(
+                &test_name,
+                "Test token created for discovery verification",
+                1000,
+                "test",
+                &wallet,
+            ).await {
+                Ok((mint, _metadata)) => {
+                    println!("✅ Test token created: {}", mint);
+                    
+                    // Wait for confirmation
+                    println!("⏳ Waiting {} seconds for blockchain confirmation...", wait_seconds);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(wait_seconds)).await;
+                    
+                    // Test discovery
+                    println!("🔍 Testing token discovery...");
+                    match client.discover_all_tokens(&wallet.pubkey()).await {
+                        Ok(tokens) => {
+                            if tokens.is_empty() {
+                                println!("📭 No tokens found in discovery");
+                                println!("💡 Token was created (mint: {}) but not appearing in discovery", mint);
+                                println!("💡 This can happen due to blockchain indexing delays");
+                            } else {
+                                println!("🎉 Discovery successful! Found {} tokens:", tokens.len());
+                                for (discovered_mint, balance, name) in tokens {
+                                    let display_name = name.unwrap_or_else(|| "Unknown Token".to_string());
+                                    println!("   • {} (Balance: {}) - {}", display_name, balance, discovered_mint);
+                                    
+                                    if discovered_mint == mint {
+                                        println!("     ✅ This is our newly created test token!");
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("❌ Discovery failed: {}", e);
+                        }
+                    }
+                    
+                    // Also test balance check
+                    println!("\n💰 Testing balance check...");
+                    match client.get_token_balance(&wallet.pubkey(), &mint).await {
+                        Ok(balance) => {
+                            println!("✅ Token balance check successful: {} tokens", balance);
+                        }
+                        Err(e) => {
+                            println!("❌ Balance check failed: {}", e);
+                        }
+                    }
+                    
+                } Err(e) => {
+                    println!("❌ Test token creation failed: {}", e);
+                }
+            }
         }
     }
     

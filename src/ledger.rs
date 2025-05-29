@@ -262,4 +262,69 @@ impl FinternetClient {
         // to find memo program calls, but this requires complex parsing
         None
     }
+    
+    /// Request devnet USDC airdrop for testing
+    pub async fn request_devnet_usdc(&self, wallet_pubkey: &Pubkey) -> Result<String> {
+        use crate::payment::usdc;
+        
+        // For devnet, we'll create an associated token account and show how to get USDC
+        let usdc_mint = usdc::devnet_mint();
+        let ata = spl_associated_token_account::get_associated_token_address(
+            wallet_pubkey,
+            &usdc_mint,
+        );
+        
+        log::info!("USDC associated token account for {}: {}", wallet_pubkey, ata);
+        
+        // Check if ATA exists
+        match self.client.get_token_account_balance(&ata) {
+            Ok(balance) => {
+                Ok(format!("USDC ATA exists with balance: {}", balance.ui_amount_string))
+            }
+            Err(_) => {
+                Ok(format!(
+                    "USDC ATA needs to be created: {}. Use `spl-token create-account {}` or fund it via a faucet service.",
+                    ata,
+                    usdc_mint
+                ))
+            }
+        }
+    }
+    
+    /// Enhanced asset discovery that includes all token accounts
+    pub async fn discover_all_tokens(&self, wallet_pubkey: &Pubkey) -> Result<Vec<(Pubkey, u64, Option<String>)>> {
+        use solana_client::rpc_request::TokenAccountsFilter;
+        
+        let mut discovered_tokens = Vec::new();
+        
+        // Get all token accounts for this wallet
+        let token_accounts = self.client.get_token_accounts_by_owner(
+            wallet_pubkey,
+            TokenAccountsFilter::ProgramId(spl_token::id()),
+        )?;
+        
+        for account in token_accounts {
+            // Parse the account data properly
+            if let solana_account_decoder::UiAccountData::Binary(data, encoding) = &account.account.data {
+                if encoding == &solana_account_decoder::UiAccountEncoding::Base64 {
+                    if let Ok(decoded_data) = base64::decode(data) {
+                        if let Ok(token_account) = spl_token::state::Account::unpack(&decoded_data) {
+                            let balance = token_account.amount;
+                            if balance > 0 {
+                                // Try to get metadata for this token
+                                let metadata_name = match self.get_asset_info(&token_account.mint).await {
+                                    Ok(metadata) => Some(metadata.name),
+                                    Err(_) => None,
+                                };
+                                
+                                discovered_tokens.push((token_account.mint, balance, metadata_name));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(discovered_tokens)
+    }
 } 

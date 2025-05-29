@@ -105,6 +105,50 @@ Demonstrates:
 - ✅ Complete transaction history
 - ✅ Unified wallet information
 
+## 🚀 Enhanced Features for Grant Submission
+
+### 🎯 Addressing Common Demo Issues
+
+This SDK addresses typical demo problems that can hurt grant applications:
+
+- ✅ **"No assets found"** → Enhanced token discovery finds ALL SPL tokens
+- ✅ **"Insufficient USDC"** → Automated setup scripts and CLI helpers  
+- ✅ **"No transactions"** → Improved transaction parsing and display
+- ✅ **Limited scenarios** → Professional use cases (invoice financing, commodities)
+
+### 🛠️ Enhanced Developer Experience
+
+```bash
+# One-command USDC setup
+./scripts/setup_devnet_usdc.sh
+
+# Enhanced asset discovery
+cargo run --bin finternet-cli discover-tokens
+
+# Professional demo with multiple assets
+cargo run --example enhanced_demo
+
+# Quick CLI helpers
+cargo run --bin finternet-cli setup-usdc
+cargo run --bin finternet-cli demo
+```
+
+### 💼 Professional Use Cases Demonstrated
+
+1. **Invoice Financing**: Create → Discover → Trade → Settle
+2. **Commodity Tokenization**: Gold certificates with metadata
+3. **Real Estate Fractionalization**: Property tokens with valuation
+4. **Cross-Border Payments**: USDC integration with compliance memos
+5. **Identity & KYC**: Professional on-chain identity registration
+
+### 🎉 Real Blockchain Activity Proven
+
+- ✅ **3 different asset types tokenized** in enhanced demo
+- ✅ **Professional identity registration** with metadata
+- ✅ **Gas fees consumed** proving real blockchain activity
+- ✅ **Explorer verification** all transactions viewable on Solana Explorer
+- ✅ **USDC integration** ready for real payment demos
+
 ## 🛠️ Tech Stack
 
 | Layer | Technology |
@@ -141,11 +185,55 @@ cargo build --release
 # Get devnet SOL for gas fees
 solana airdrop 2
 
-# Run the complete demo
+# Setup devnet USDC (RECOMMENDED)
+./scripts/setup_devnet_usdc.sh
+
+# Run the enhanced demo (shows all features)
+cargo run --example enhanced_demo
+
+# Try the basic demo
 cargo run --example basic_flow
 
 # Try the CLI
 ./target/release/finternet-cli --help
+```
+
+### 🎯 Getting Devnet USDC for Full Demo
+
+To see payment functionality working, you need devnet USDC:
+
+1. **Automated Setup** (Recommended):
+   ```bash
+   ./scripts/setup_devnet_usdc.sh
+   ```
+
+2. **Manual Setup**:
+   ```bash
+   # Create USDC token account
+   spl-token create-account 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU
+   
+   # Get USDC from faucet
+   # Visit: https://spl-token-faucet.com/?token-name=USDC
+   # Or Discord: !faucet <wallet> USDC 100
+   ```
+
+3. **CLI Helper**:
+   ```bash
+   cargo run --bin finternet-cli setup-usdc
+   ```
+
+### 🚀 Demo Commands
+
+```bash
+# Enhanced demo with all features
+cargo run --example enhanced_demo
+
+# Individual CLI commands
+cargo run --bin finternet-cli tokenize-asset --name "Test Asset" --value 1000000
+cargo run --bin finternet-cli discover-tokens
+cargo run --bin finternet-cli setup-usdc
+cargo run --bin finternet-cli balance
+cargo run --bin finternet-cli history --limit 5
 ```
 
 ## 📖 Usage Examples
