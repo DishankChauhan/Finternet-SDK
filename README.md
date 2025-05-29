@@ -134,7 +134,7 @@ solana config set --url devnet
 ### Installation & Demo
 ```bash
 # Clone and build
-git clone <your-repo-url>
+git clone <https://github.com/DishankChauhan/Finternet-SDK>
 cd finternet-sdk-rust
 cargo build --release
 
