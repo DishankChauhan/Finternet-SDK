@@ -188,12 +188,13 @@ async fn main() -> Result<()> {
         Commands::TokenizeAsset { name, description, value, asset_type } => {
             println!("🏭 Tokenizing asset: {}", name);
             
-            let (mint_address, metadata) = client
+            let (mint_address, metadata, signature) = client
                 .tokenize_asset(&name, &description, value, &asset_type, &wallet)
                 .await?;
             
             println!("✅ Asset tokenized successfully!");
             println!("🪙 Mint Address: {}", mint_address);
+            println!("📝 Transaction: {}", signature);
             println!("📋 Metadata: {:#?}", metadata);
         }
         
@@ -471,8 +472,9 @@ async fn main() -> Result<()> {
                 "test",
                 &wallet,
             ).await {
-                Ok((mint, _metadata)) => {
+                Ok((mint, _metadata, signature)) => {
                     println!("✅ Test token created: {}", mint);
+                    println!("📝 Transaction: {}", signature);
                     
                     // Wait for confirmation
                     println!("⏳ Waiting {} seconds for blockchain confirmation...", wait_seconds);

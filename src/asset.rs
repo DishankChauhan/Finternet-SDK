@@ -25,7 +25,7 @@ impl FinternetClient {
         value: u64,
         asset_type: &str,
         wallet: &Keypair,
-    ) -> Result<(Pubkey, AssetMetadata)> {
+    ) -> Result<(Pubkey, AssetMetadata, solana_sdk::signature::Signature)> {
         log::info!(
             "Tokenizing asset: {} of type: {} with value: {}",
             name,
@@ -150,7 +150,7 @@ impl FinternetClient {
             token_mint: Some(mint_pubkey),
         };
         
-        Ok((mint_pubkey, asset_metadata))
+        Ok((mint_pubkey, asset_metadata, signature))
     }
     
     /// Get asset information from the blockchain

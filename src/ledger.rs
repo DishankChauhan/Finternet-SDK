@@ -166,20 +166,105 @@ impl FinternetClient {
             TokenAccountsFilter::ProgramId(spl_token::id()),
         )?;
         
+        log::info!("Raw RPC response: {} token accounts found", token_accounts.len());
+        
         let mut balances = HashMap::new();
         
-        for account in token_accounts {
-            // Decode the account data properly
-            if let UiAccountData::Binary(data, _) = &account.account.data {
-                if let Ok(decoded_data) = bs58::decode(data).into_vec() {
-                    if let Ok(token_account) = spl_token::state::Account::unpack(&decoded_data) {
-                        balances.insert(token_account.mint, token_account.amount);
+        for (i, account) in token_accounts.iter().enumerate() {
+            log::debug!("Processing account {}: pubkey={}", i, account.pubkey);
+            log::debug!("Account data type: {:?}", account.account.data);
+            
+            // Decode the account data properly - handle both Binary and JSON formats
+            match &account.account.data {
+                UiAccountData::Binary(data, encoding) => {
+                    log::debug!("Account {} has encoding: {:?}, data length: {}", i, encoding, data.len());
+                    
+                    let decoded_data = match encoding {
+                        solana_account_decoder::UiAccountEncoding::Base64 => {
+                            // Use the modern base64 engine instead of deprecated function
+                            use base64::{Engine, engine::general_purpose};
+                            match general_purpose::STANDARD.decode(data) {
+                                Ok(decoded) => {
+                                    log::debug!("Successfully decoded base64 data, length: {}", decoded.len());
+                                    decoded
+                                }
+                                Err(e) => {
+                                    log::warn!("Failed to decode base64 for account {}: {}", i, e);
+                                    continue;
+                                }
+                            }
+                        }
+                        solana_account_decoder::UiAccountEncoding::Base58 => {
+                            match bs58::decode(data).into_vec() {
+                                Ok(decoded) => {
+                                    log::debug!("Successfully decoded base58 data, length: {}", decoded.len());
+                                    decoded
+                                }
+                                Err(e) => {
+                                    log::warn!("Failed to decode base58 for account {}: {}", i, e);
+                                    continue;
+                                }
+                            }
+                        }
+                        _ => {
+                            log::warn!("Skipping account {} with unsupported encoding: {:?}", i, encoding);
+                            continue;
+                        }
+                    };
+                    
+                    match spl_token::state::Account::unpack(&decoded_data) {
+                        Ok(token_account) => {
+                            log::info!("✅ Successfully unpacked token account {}: mint={}, amount={}", 
+                                      i, token_account.mint, token_account.amount);
+                            balances.insert(token_account.mint, token_account.amount);
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to unpack token account {}: {}", i, e);
+                        }
                     }
+                }
+                UiAccountData::Json(parsed_account) => {
+                    log::debug!("Account {} is in JSON format", i);
+                    
+                    // Handle JSON parsed account data
+                    let parsed = &parsed_account.parsed;
+                    if let Some(info) = parsed.get("info") {
+                        // Extract mint and token amount from JSON
+                        if let (Some(mint_str), Some(token_amount)) = (
+                            info.get("mint").and_then(|v| v.as_str()),
+                            info.get("tokenAmount")
+                        ) {
+                            if let Some(amount_str) = token_amount.get("amount").and_then(|v| v.as_str()) {
+                                match (mint_str.parse::<Pubkey>(), amount_str.parse::<u64>()) {
+                                    (Ok(mint), Ok(amount)) => {
+                                        log::info!("✅ Successfully parsed JSON token account {}: mint={}, amount={}", 
+                                                  i, mint, amount);
+                                        balances.insert(mint, amount);
+                                    }
+                                    (Err(e), _) => {
+                                        log::warn!("Failed to parse mint for account {}: {}", i, e);
+                                    }
+                                    (_, Err(e)) => {
+                                        log::warn!("Failed to parse amount for account {}: {}", i, e);
+                                    }
+                                }
+                            } else {
+                                log::warn!("No amount found in tokenAmount for account {}", i);
+                            }
+                        } else {
+                            log::warn!("Missing mint or tokenAmount in account {} info", i);
+                        }
+                    } else {
+                        log::warn!("No info field in parsed account {}", i);
+                    }
+                }
+                _ => {
+                    log::debug!("Account {} data format not supported", i);
                 }
             }
         }
         
-        log::info!("Found {} token accounts", balances.len());
+        log::info!("Successfully found {} token accounts with balances", balances.len());
         Ok(balances)
     }
     
@@ -293,38 +378,42 @@ impl FinternetClient {
     
     /// Enhanced asset discovery that includes all token accounts
     pub async fn discover_all_tokens(&self, wallet_pubkey: &Pubkey) -> Result<Vec<(Pubkey, u64, Option<String>)>> {
-        use solana_client::rpc_request::TokenAccountsFilter;
+        log::info!("Starting enhanced token discovery for: {}", wallet_pubkey);
         
         let mut discovered_tokens = Vec::new();
         
-        // Get all token accounts for this wallet
-        let token_accounts = self.client.get_token_accounts_by_owner(
-            wallet_pubkey,
-            TokenAccountsFilter::ProgramId(spl_token::id()),
-        )?;
+        // Use our enhanced get_token_accounts method
+        let token_accounts = self.get_token_accounts(wallet_pubkey).await?;
         
-        for account in token_accounts {
-            // Parse the account data properly
-            if let solana_account_decoder::UiAccountData::Binary(data, encoding) = &account.account.data {
-                if encoding == &solana_account_decoder::UiAccountEncoding::Base64 {
-                    if let Ok(decoded_data) = base64::decode(data) {
-                        if let Ok(token_account) = spl_token::state::Account::unpack(&decoded_data) {
-                            let balance = token_account.amount;
-                            if balance > 0 {
-                                // Try to get metadata for this token
-                                let metadata_name = match self.get_asset_info(&token_account.mint).await {
-                                    Ok(metadata) => Some(metadata.name),
-                                    Err(_) => None,
-                                };
-                                
-                                discovered_tokens.push((token_account.mint, balance, metadata_name));
-                            }
-                        }
+        log::info!("Processing {} token accounts for metadata", token_accounts.len());
+        
+        for (mint, balance) in token_accounts {
+            if balance > 0 {
+                log::debug!("Processing token: mint={}, balance={}", mint, balance);
+                
+                // Try to get metadata for this token
+                let metadata_name = match self.get_asset_info(&mint).await {
+                    Ok(metadata) => {
+                        log::debug!("Found metadata for {}: {}", mint, metadata.name);
+                        Some(metadata.name)
                     }
-                }
+                    Err(e) => {
+                        log::debug!("No metadata found for {}: {}", mint, e);
+                        None
+                    }
+                };
+                
+                discovered_tokens.push((mint, balance, metadata_name));
             }
         }
         
+        log::info!("Discovery complete: found {} tokens with positive balances", discovered_tokens.len());
         Ok(discovered_tokens)
+    }
+    
+    /// Get SOL balance for a wallet (returns amount in SOL, not lamports)
+    pub async fn get_sol_balance(&self, wallet_pubkey: &Pubkey) -> Result<f64> {
+        let balance_lamports = self.client.get_balance(wallet_pubkey)?;
+        Ok(balance_lamports as f64 / 1_000_000_000.0)
     }
 } 
